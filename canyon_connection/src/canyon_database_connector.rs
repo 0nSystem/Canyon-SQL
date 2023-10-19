@@ -25,6 +25,19 @@ pub enum DatabaseType {
     MySQL,
 }
 
+impl From<&mut DatabaseConnection> for DatabaseType {
+    fn from(value: &mut DatabaseConnection) -> Self {
+        match value {
+            #[cfg(feature = "postgres")]
+            DatabaseConnection::Postgres(_) => DatabaseType::PostgreSql,
+            #[cfg(feature = "mssql")]
+            DatabaseConnection::SqlServer(_) => DatabaseType::SqlServer,
+            #[cfg(feature = "mysql")]
+            DatabaseConnection::MySQL(_) => DatabaseType::MySQL,
+        }
+    }
+}
+
 /// A connection with a `PostgreSQL` database
 #[cfg(feature = "postgres")]
 pub struct PostgreSqlConnection {

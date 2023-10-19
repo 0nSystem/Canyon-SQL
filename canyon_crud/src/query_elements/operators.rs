@@ -32,46 +32,32 @@ impl Operator for Comp {
     }
 }
 
+// This String argument is temporal solution to change datatypes to cast in other database
 pub enum Like {
     /// Operator "LIKE"  as '%pattern%'
-    Full,
+    Full(String),
     /// Operator "LIKE"  as '%pattern'
-    Left,
+    Left(String),
     /// Operator "LIKE"  as 'pattern%'
-    Right,
+    Right(String),
 }
 
 impl Operator for Like {
     fn as_str(&self, placeholder_counter: usize) -> String {
-        match *self {
-            Like::Full => {
+        match self {
+            Like::Full(datasource_name) => {
                 format!(" LIKE CONCAT('%', CAST(${placeholder_counter} AS VARCHAR) ,'%')")
             }
-            Like::Left => format!(" LIKE CONCAT('%', CAST(${placeholder_counter} AS VARCHAR))"),
-            Like::Right => format!(" LIKE CONCAT(CAST(${placeholder_counter} AS VARCHAR) ,'%')"),
-        }
-    }
-}
-
-#[cfg(feature = "mysql")]
-pub enum LikeMysql {
-    /// Operator "LIKE"  as '%pattern%'
-    Full,
-    /// Operator "LIKE"  as '%pattern'
-    Left,
-    /// Operator "LIKE"  as 'pattern%'
-    Right,
-}
-
-#[cfg(feature = "mysql")]
-impl Operator for LikeMysql {
-    fn as_str(&self, placeholder_counter: usize) -> String {
-        match *self {
-            LikeMysql::Full => {
-                format!(" LIKE CONCAT('%', CAST(${placeholder_counter} AS CHAR) ,'%')")
+            Like::Left(datasource_name) => {
+                format!(" LIKE CONCAT('%', CAST(${placeholder_counter} AS VARCHAR))")
             }
-            LikeMysql::Left => format!(" LIKE CONCAT('%', CAST(${placeholder_counter} AS CHAR))"),
-            LikeMysql::Right => format!(" LIKE CONCAT(CAST(${placeholder_counter} AS CHAR) ,'%')"),
+            Like::Right(datasource_name) => {
+                format!(" LIKE CONCAT(CAST(${placeholder_counter} AS VARCHAR) ,'%')")
+            }
         }
     }
+}
+
+fn get_datatype_require_to_cast_as_str_by_database_type(datasource_name: &str) -> String {
+    "".to_string()
 }

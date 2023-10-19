@@ -96,9 +96,9 @@ where
 
     async fn find_all_unchecked_datasource<'a>(datasource_name: &'a str) -> Vec<T>;
 
-    fn select_query<'a>() -> SelectQueryBuilder<'a, T>;
+    fn select_query<'a, 'b, 'c>() -> SelectQueryBuilder<'a, 'b, 'c, T>;
 
-    fn select_query_datasource(datasource_name: &str) -> SelectQueryBuilder<'_, T>;
+    fn select_query_datasource(datasource_name: &str) -> SelectQueryBuilder<'_, '_, '_, T>;
 
     async fn count() -> Result<i64, Box<(dyn std::error::Error + Send + Sync + 'static)>>;
 
@@ -138,9 +138,9 @@ where
         datasource_name: &'a str,
     ) -> Result<(), Box<dyn std::error::Error + Sync + Send>>;
 
-    fn update_query<'a>() -> UpdateQueryBuilder<'a, T>;
+    fn update_query<'a, 'b, 'c>() -> UpdateQueryBuilder<'a, 'b, 'c, T>;
 
-    fn update_query_datasource(datasource_name: &str) -> UpdateQueryBuilder<'_, T>;
+    fn update_query_datasource(datasource_name: &str) -> UpdateQueryBuilder<'_, '_, '_, T>;
 
     async fn delete(&self) -> Result<(), Box<dyn std::error::Error + Sync + Send>>;
 
@@ -149,9 +149,9 @@ where
         datasource_name: &'a str,
     ) -> Result<(), Box<dyn std::error::Error + Sync + Send>>;
 
-    fn delete_query<'a>() -> DeleteQueryBuilder<'a, T>;
+    fn delete_query<'a, 'b, 'c>() -> DeleteQueryBuilder<'a, 'b, 'c, T>;
 
-    fn delete_query_datasource(datasource_name: &str) -> DeleteQueryBuilder<'_, T>;
+    fn delete_query_datasource(datasource_name: &str) -> DeleteQueryBuilder<'_, '_, '_, T>;
 }
 
 #[cfg(feature = "postgres")]
@@ -311,7 +311,8 @@ fn reorder_params<T>(
     fn_parser: impl Fn(&&dyn QueryParameter<'_>) -> T,
 ) -> Vec<T> {
     let mut ordered_params = vec![];
-    let rg = regex::Regex::new(DETECT_PARAMS_IN_QUERY).expect("Error create regex with detect params pattern expression");
+    let rg = regex::Regex::new(DETECT_PARAMS_IN_QUERY)
+        .expect("Error create regex with detect params pattern expression");
 
     for positional_param in rg.find_iter(stmt) {
         let pp: &str = positional_param.as_str();

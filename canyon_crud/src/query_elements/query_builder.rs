@@ -1,4 +1,4 @@
-use std::fmt::Debug;
+use std::{fmt::Debug, future::Future, pin::Pin};
 
 use crate::{
     bounds::{FieldIdentifier, FieldValueIdentifier, QueryParameter},
@@ -6,6 +6,11 @@ use crate::{
     mapper::RowMapper,
     query_elements::query::Query,
     Operator,
+};
+
+use canyon_connection::{
+    canyon_database_connector::{DatabaseConnection, DatabaseType},
+    get_database_connection, CACHED_DATABASE_CONN,
 };
 
 /// Contains the elements that makes part of the formal declaration
@@ -132,33 +137,44 @@ pub mod ops {
 
 /// Type for construct more complex queries than the classical CRUD ones.
 #[derive(Debug, Clone)]
-pub struct QueryBuilder<'a, T>
+pub struct QueryBuilder<'a, 'b, 'c, T>
 where
     T: CrudOperations<T> + Transaction<T> + RowMapper<T>,
 {
-    query: Query<'a, T>,
+    query: Query<'b, T>,
     datasource_name: &'a str,
+    datasource_type: &'c mut DatabaseConnection,
 }
 
-unsafe impl<'a, T> Send for QueryBuilder<'a, T> where
+unsafe impl<'a, 'b, 'c, T> Send for QueryBuilder<'a, 'b, 'c, T> where
     T: CrudOperations<T> + Transaction<T> + RowMapper<T>
 {
 }
-unsafe impl<'a, T> Sync for QueryBuilder<'a, T> where
+unsafe impl<'a, 'b, 'c, T> Sync for QueryBuilder<'a, 'b, 'c, T> where
     T: CrudOperations<T> + Transaction<T> + RowMapper<T>
 {
 }
 
-impl<'a, T> QueryBuilder<'a, T>
+impl<'a, 'b, 'c, T> QueryBuilder<'a, 'b, 'c, T>
 where
     T: CrudOperations<T> + Transaction<T> + RowMapper<T>,
 {
     /// Returns a new instance of the [`QueryBuilder`]
-    pub fn new(query: Query<'a, T>, datasource_name: &'a str) -> Self {
-        Self {
-            query,
-            datasource_name,
-        }
+    pub fn new(
+        query: Query<'_, T>,
+        datasource_name: &'a str,
+    ) -> Pin<Box<dyn Future<Output = Self> + 'a>> {
+        Box::pin(async move {
+            let datasource_cache = &mut CACHED_DATABASE_CONN.lock().await;
+            let datasource_connection = get_database_connection(datasource_name, datasource_cache);
+            let datasource_type = datasource_connection.into();
+
+            Self {
+                query,
+                datasource_name,
+                datasource_type,
+            }
+        })
     }
 
     /// Launches the generated query against the database targeted
@@ -280,25 +296,31 @@ where
 }
 
 #[derive(Debug, Clone)]
-pub struct SelectQueryBuilder<'a, T>
+pub struct SelectQueryBuilder<'a, 'b, 'c, T>
 where
     T: CrudOperations<T> + Transaction<T> + RowMapper<T>,
 {
-    _inner: QueryBuilder<'a, T>,
+    _inner: QueryBuilder<'a, 'b, 'c, T>,
 }
 
-impl<'a, T> SelectQueryBuilder<'a, T>
+impl<'a, 'b, 'c, T> SelectQueryBuilder<'a, 'b, 'c, T>
 where
     T: CrudOperations<T> + Transaction<T> + RowMapper<T>,
 {
     /// Generates a new public instance of the [`SelectQueryBuilder`]
-    pub fn new(table_schema_data: &str, datasource_name: &'a str) -> Self {
-        Self {
-            _inner: QueryBuilder::<T>::new(
-                Query::new(format!("SELECT * FROM {table_schema_data}")),
-                datasource_name,
-            ),
-        }
+    pub fn new(
+        table_schema_data: &'a str,
+        datasource_name: &'a str,
+    ) -> Pin<Box<dyn Future<Output = Self> + 'a>> {
+        Box::pin(async move {
+            Self {
+                _inner: QueryBuilder::<T>::new(
+                    Query::new(format!("SELECT * FROM {table_schema_data}")),
+                    datasource_name,
+                )
+                .await,
+            }
+        })
     }
 
     /// Launches the generated query to the database pointed by the
@@ -375,7 +397,7 @@ where
     }
 }
 
-impl<'a, T> ops::QueryBuilder<'a, T> for SelectQueryBuilder<'a, T>
+impl<'a, 'b, 'c, T> ops::QueryBuilder<'a, T> for SelectQueryBuilder<'a, 'b, 'c, T>
 where
     T: Debug + CrudOperations<T> + Transaction<T> + RowMapper<T> + Send,
 {
@@ -443,25 +465,31 @@ where
 /// * `set` - To construct a new `SET` clause to determine the columns to
 /// update with the provided values
 #[derive(Debug, Clone)]
-pub struct UpdateQueryBuilder<'a, T>
+pub struct UpdateQueryBuilder<'a, 'b, 'c, T>
 where
     T: CrudOperations<T> + Transaction<T> + RowMapper<T>,
 {
-    _inner: QueryBuilder<'a, T>,
+    _inner: QueryBuilder<'a, 'b, 'c, T>,
 }
 
-impl<'a, T> UpdateQueryBuilder<'a, T>
+impl<'a, 'b, 'c, T> UpdateQueryBuilder<'a, 'b, 'c, T>
 where
     T: CrudOperations<T> + Transaction<T> + RowMapper<T>,
 {
     /// Generates a new public instance of the [`UpdateQueryBuilder`]
-    pub fn new(table_schema_data: &str, datasource_name: &'a str) -> Self {
-        Self {
-            _inner: QueryBuilder::<T>::new(
-                Query::new(format!("UPDATE {table_schema_data}")),
-                datasource_name,
-            ),
-        }
+    pub fn new(
+        table_schema_data: &'a str,
+        datasource_name: &'a str,
+    ) -> Pin<Box<dyn Future<Output = Self> + 'a>> {
+        Box::pin(async move {
+            Self {
+                _inner: QueryBuilder::<T>::new(
+                    Query::new(format!("UPDATE {table_schema_data}")),
+                    datasource_name,
+                )
+                .await,
+            }
+        })
     }
 
     /// Launches the generated query to the database pointed by the
@@ -512,7 +540,7 @@ where
     }
 }
 
-impl<'a, T> ops::QueryBuilder<'a, T> for UpdateQueryBuilder<'a, T>
+impl<'a, 'b, 'c, T> ops::QueryBuilder<'a, T> for UpdateQueryBuilder<'a, 'b, 'c, T>
 where
     T: Debug + CrudOperations<T> + Transaction<T> + RowMapper<T> + Send,
 {
@@ -581,25 +609,31 @@ where
 /// * `set` - To construct a new `SET` clause to determine the columns to
 /// update with the provided values
 #[derive(Debug, Clone)]
-pub struct DeleteQueryBuilder<'a, T>
+pub struct DeleteQueryBuilder<'a, 'b, 'c, T>
 where
     T: CrudOperations<T> + Transaction<T> + RowMapper<T>,
 {
-    _inner: QueryBuilder<'a, T>,
+    _inner: QueryBuilder<'a, 'b, 'c, T>,
 }
 
-impl<'a, T> DeleteQueryBuilder<'a, T>
+impl<'a, 'b, 'c, T> DeleteQueryBuilder<'a, 'b, 'c, T>
 where
     T: CrudOperations<T> + Transaction<T> + RowMapper<T>,
 {
     /// Generates a new public instance of the [`DeleteQueryBuilder`]
-    pub fn new(table_schema_data: &str, datasource_name: &'a str) -> Self {
-        Self {
-            _inner: QueryBuilder::<T>::new(
-                Query::new(format!("DELETE FROM {table_schema_data}")),
-                datasource_name,
-            ),
-        }
+    pub fn new(
+        table_schema_data: &'a str,
+        datasource_name: &'a str,
+    ) -> Pin<Box<dyn Future<Output = Self> + 'a>> {
+        Box::pin(async move {
+            Self {
+                _inner: QueryBuilder::<T>::new(
+                    Query::new(format!("DELETE FROM {table_schema_data}")),
+                    datasource_name,
+                )
+                .await,
+            }
+        })
     }
 
     /// Launches the generated query to the database pointed by the
@@ -612,7 +646,7 @@ where
     }
 }
 
-impl<'a, T> ops::QueryBuilder<'a, T> for DeleteQueryBuilder<'a, T>
+impl<'a, 'b, 'c, T> ops::QueryBuilder<'a, T> for DeleteQueryBuilder<'a, 'b, 'c, T>
 where
     T: Debug + CrudOperations<T> + Transaction<T> + RowMapper<T> + Send,
 {
